@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HVAC RL — System Architecture</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --bg: #f8f7f4;
+    --bg2: #ffffff;
+    --text: #1a1917;
+    --text2: #6b6a64;
+    --border: rgba(0,0,0,0.12);
+    --border2: rgba(0,0,0,0.22);
+    --blue50: #E6F1FB; --blue200: #85B7EB; --blue600: #185FA5; --blue800: #0C447C;
+    --teal50: #E1F5EE; --teal200: #5DCAA5; --teal600: #0F6E56; --teal800: #085041;
+    --amber50: #FAEEDA; --amber200: #EF9F27; --amber600: #854F0B; --amber800: #633806;
+    --green50: #EAF3DE; --green200: #97C459; --green600: #3B6D11; --green800: #27500A;
+    --purple50: #EEEDFE; --purple200: #AFA9EC; --purple600: #534AB7; --purple800: #3C3489;
+    --coral50: #FAECE7; --coral200: #F0997B; --coral600: #993C1D; --coral800: #712B13;
+    --gray50: #F1EFE8; --gray200: #B4B2A9; --gray600: #5F5E5A; --gray800: #444441;
+    --red50: #FCEBEB; --red200: #F09595; --red600: #A32D2D; --red800: #791F1F;
+    --pink50: #FBEAF0; --pink200: #ED93B1; --pink600: #993556; --pink800: #72243E;
+    --radius: 8px; --radius-lg: 12px; --radius-xl: 16px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 1px rgba(0,0,0,0.04);
+    --shadow-lg: 0 4px 16px rgba(0,0,0,0.1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1917; --bg2: #242320; --text: #e8e6e0; --text2: #9c9a92;
+      --border: rgba(255,255,255,0.10); --border2: rgba(255,255,255,0.18);
+      --blue50: #042C53; --blue200: #0C447C; --blue600: #85B7EB; --blue800: #B5D4F4;
+      --teal50: #04342C; --teal200: #085041; --teal600: #5DCAA5; --teal800: #9FE1CB;
+      --amber50: #412402; --amber200: #633806; --amber600: #EF9F27; --amber800: #FAC775;
+      --green50: #173404; --green200: #27500A; --green600: #97C459; --green800: #C0DD97;
+      --purple50: #26215C; --purple200: #3C3489; --purple600: #AFA9EC; --purple800: #CECBF6;
+      --coral50: #4A1B0C; --coral200: #712B13; --coral600: #F0997B; --coral800: #F5C4B3;
+      --gray50: #2C2C2A; --gray200: #444441; --gray600: #B4B2A9; --gray800: #D3D1C7;
+      --red50: #501313; --red200: #791F1F; --red600: #F09595; --red800: #F7C1C1;
+      --pink50: #4B1528; --pink200: #72243E; --pink600: #ED93B1; --pink800: #F4C0D1;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem;
+    line-height: 1.5;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+  header h1 {
+    font-size: 1.5rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem;
+  }
+  header p {
+    font-size: 0.875rem;
+    color: var(--text2);
+  }
+
+  /* Layer label */
+  .layer-label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text2);
+    margin-bottom: 0.5rem;
+  }
+
+  /* Component card */
+  .comp {
+    background: var(--bg2);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+    position: relative;
+  }
+  .comp:hover {
+    border-color: var(--border2);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-1px);
+  }
+  .comp.active {
+    box-shadow: 0 0 0 2px var(--active-color, #185FA5);
+    border-color: transparent;
+  }
+  .comp-icon {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    margin-bottom: 0.5rem;
+  }
+  .comp-name {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    margin-bottom: 0.125rem;
+  }
+  .comp-file {
+    font-size: 0.6875rem;
+    color: var(--text2);
+    font-family: 'SFMono-Regular', Consolas, monospace;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 0.625rem;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-top: 0.375rem;
+    letter-spacing: 0.03em;
+  }
+
+  /* Color themes */
+  .blue  { background: var(--blue50);   --active-color: var(--blue600); }
+  .blue  .comp-icon { background: var(--blue200); color: var(--blue800); }
+  .blue  .badge { background: var(--blue50); color: var(--blue800); border: 0.5px solid var(--blue200); }
+
+  .teal  { background: var(--teal50);   --active-color: var(--teal600); }
+  .teal  .comp-icon { background: var(--teal200); color: var(--teal800); }
+  .teal  .badge { background: var(--teal50); color: var(--teal800); border: 0.5px solid var(--teal200); }
+
+  .amber { background: var(--amber50);  --active-color: var(--amber600); }
+  .amber .comp-icon { background: var(--amber200); color: var(--amber800); }
+  .amber .badge { background: var(--amber50); color: var(--amber800); border: 0.5px solid var(--amber200); }
+
+  .green { background: var(--green50);  --active-color: var(--green600); }
+  .green .comp-icon { background: var(--green200); color: var(--green800); }
+  .green .badge { background: var(--green50); color: var(--green800); border: 0.5px solid var(--green200); }
+
+  .purple{ background: var(--purple50); --active-color: var(--purple600); }
+  .purple .comp-icon { background: var(--purple200); color: var(--purple800); }
+  .purple .badge { background: var(--purple50); color: var(--purple800); border: 0.5px solid var(--purple200); }
+
+  .coral { background: var(--coral50);  --active-color: var(--coral600); }
+  .coral .comp-icon { background: var(--coral200); color: var(--coral800); }
+  .coral .badge { background: var(--coral50); color: var(--coral800); border: 0.5px solid var(--coral200); }
+
+  .gray  { background: var(--gray50);   --active-color: var(--gray600); }
+  .gray  .comp-icon { background: var(--gray200); color: var(--gray800); }
+  .gray  .badge { background: var(--gray50); color: var(--gray800); border: 0.5px solid var(--gray200); }
+
+  .pink  { background: var(--pink50);   --active-color: var(--pink600); }
+  .pink  .comp-icon { background: var(--pink200); color: var(--pink800); }
+  .pink  .badge { background: var(--pink50); color: var(--pink800); border: 0.5px solid var(--pink200); }
+
+  /* Layout */
+  .arch {
+    max-width: 960px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* Layer row */
+  .layer {
+    background: var(--bg2);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 0;
+  }
+
+  .layer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+  }
+
+  /* Arrow between layers */
+  .arrow-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    font-size: 0.75rem;
+    color: var(--text2);
+  }
+  .arrow-row i { font-size: 18px; color: var(--text2); }
+
+  /* Detail panel */
+  #detail {
+    margin-top: 2rem;
+    max-width: 960px;
+    margin-left: auto;
+    margin-right: auto;
+    background: var(--bg2);
+    border: 0.5px solid var(--border2);
+    border-radius: var(--radius-xl);
+    padding: 1.5rem 1.75rem;
+    display: none;
+    animation: fadeIn 0.15s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  #detail.show { display: block; }
+  #detail h2 { font-size: 1rem; font-weight: 500; margin-bottom: 0.25rem; }
+  #detail .det-file { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.8125rem; color: var(--text2); margin-bottom: 1rem; }
+  #detail p { font-size: 0.875rem; color: var(--text2); line-height: 1.65; margin-bottom: 0.75rem; }
+  #detail p:last-child { margin-bottom: 0; }
+  .det-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-bottom: 1rem; }
+  .chip {
+    font-size: 0.6875rem; font-weight: 500; padding: 3px 8px;
+    border-radius: 5px; border: 0.5px solid var(--border);
+    background: var(--bg); color: var(--text2);
+  }
+  #detail-close {
+    float: right; background: none; border: none; cursor: pointer;
+    color: var(--text2); font-size: 18px; line-height: 1; padding: 0;
+  }
+  #detail-close:hover { color: var(--text); }
+
+  /* Flow legend */
+  .legend {
+    max-width: 960px; margin: 1.5rem auto 0;
+    display: flex; flex-wrap: wrap; gap: 1.25rem;
+    font-size: 0.75rem; color: var(--text2);
+    border-top: 0.5px solid var(--border);
+    padding-top: 1rem;
+  }
+  .legend-item { display: flex; align-items: center; gap: 0.375rem; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HVAC RL — System Architecture</h1>
+  <p>Click any component to explore its role, files, and connections</p>
+</header>
+
+<div class="arch">
+
+  <!-- Layer 1: Developer Workflow -->
+  <div class="layer">
+    <div class="layer-label">Developer Workflow</div>
+    <div class="layer-grid">
+      <div class="comp gray" data-id="git" onclick="show('git')">
+        <div class="comp-icon"><i class="ti ti-git-branch"></i></div>
+        <div class="comp-name">Git branching</div>
+        <div class="comp-file">CONTRIBUTING.md</div>
+        <span class="badge">main / dev / feature/*</span>
+      </div>
+      <div class="comp gray" data-id="ci" onclick="show('ci')">
+        <div class="comp-icon"><i class="ti ti-player-play"></i></div>
+        <div class="comp-name">CI/CD pipeline</div>
+        <div class="comp-file">.github/workflows/ci_cd.yml</div>
+        <span class="badge">lint → test → docker</span>
+      </div>
+      <div class="comp gray" data-id="tests" onclick="show('tests')">
+        <div class="comp-icon"><i class="ti ti-check"></i></div>
+        <div class="comp-name">Test suite</div>
+        <div class="comp-file">tests/test_all.py</div>
+        <span class="badge">pytest + coverage</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-row"><i class="ti ti-arrow-down"></i><span>code push triggers pipeline</span></div>
+
+  <!-- Layer 2: Data & Training -->
+  <div class="layer">
+    <div class="layer-label">Data & Training Pipeline</div>
+    <div class="layer-grid">
+      <div class="comp teal" data-id="preprocess" onclick="show('preprocess')">
+        <div class="comp-icon"><i class="ti ti-adjustments"></i></div>
+        <div class="comp-name">Preprocessing</div>
+        <div class="comp-file">data/preprocess.py</div>
+        <span class="badge">clean + features</span>
+      </div>
+      <div class="comp teal" data-id="env" onclick="show('env')">
+        <div class="comp-icon"><i class="ti ti-building"></i></div>
+        <div class="comp-name">HVAC environment</div>
+        <div class="comp-file">env.py</div>
+        <span class="badge">simulator + MDP</span>
+      </div>
+      <div class="comp teal" data-id="train" onclick="show('train')">
+        <div class="comp-icon"><i class="ti ti-brain"></i></div>
+        <div class="comp-name">RL training</div>
+        <div class="comp-file">train.py</div>
+        <span class="badge">Q-Learning / SARSA</span>
+      </div>
+      <div class="comp purple" data-id="mlflow" onclick="show('mlflow')">
+        <div class="comp-icon"><i class="ti ti-chart-line"></i></div>
+        <div class="comp-name">MLflow tracking</div>
+        <div class="comp-file">mlruns/</div>
+        <span class="badge">experiments + registry</span>
+      </div>
+      <div class="comp purple" data-id="dvc" onclick="show('dvc')">
+        <div class="comp-icon"><i class="ti ti-versions"></i></div>
+        <div class="comp-name">DVC pipeline</div>
+        <div class="comp-file">dvc.yaml</div>
+        <span class="badge">reproducible DAG</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-row"><i class="ti ti-arrow-down"></i><span>trained model artifacts</span></div>
+
+  <!-- Layer 3: Inference -->
+  <div class="layer">
+    <div class="layer-label">Inference Layer</div>
+    <div class="layer-grid">
+      <div class="comp blue" data-id="api" onclick="show('api')">
+        <div class="comp-icon"><i class="ti ti-api"></i></div>
+        <div class="comp-name">FastAPI server</div>
+        <div class="comp-file">app.py</div>
+        <span class="badge">/predict /health</span>
+      </div>
+      <div class="comp blue" data-id="monitor" onclick="show('monitor')">
+        <div class="comp-icon"><i class="ti ti-activity"></i></div>
+        <div class="comp-name">Drift monitor</div>
+        <div class="comp-file">monitoring/monitor.py</div>
+        <span class="badge">PSI sliding window</span>
+      </div>
+      <div class="comp blue" data-id="evidently" onclick="show('evidently')">
+        <div class="comp-icon"><i class="ti ti-report-analytics"></i></div>
+        <div class="comp-name">EvidentlyAI</div>
+        <div class="comp-file">monitoring/drift_evidently.py</div>
+        <span class="badge">HTML drift reports</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-row"><i class="ti ti-arrow-down"></i><span>containerised & deployed</span></div>
+
+  <!-- Layer 4: Infrastructure -->
+  <div class="layer">
+    <div class="layer-label">Infrastructure & Orchestration</div>
+    <div class="layer-grid">
+      <div class="comp amber" data-id="docker" onclick="show('docker')">
+        <div class="comp-icon"><i class="ti ti-brand-docker"></i></div>
+        <div class="comp-name">Docker</div>
+        <div class="comp-file">Dockerfile · docker-compose.yaml</div>
+        <span class="badge">multi-stage build</span>
+      </div>
+      <div class="comp amber" data-id="k8s" onclick="show('k8s')">
+        <div class="comp-icon"><i class="ti ti-cube"></i></div>
+        <div class="comp-name">Kubernetes</div>
+        <div class="comp-file">k8s/manifests.yaml</div>
+        <span class="badge">HPA autoscaling</span>
+      </div>
+      <div class="comp amber" data-id="argocd" onclick="show('argocd')">
+        <div class="comp-icon"><i class="ti ti-refresh"></i></div>
+        <div class="comp-name">ArgoCD GitOps</div>
+        <div class="comp-file">k8s/argocd-app.yaml</div>
+        <span class="badge">auto-sync from main</span>
+      </div>
+      <div class="comp amber" data-id="config" onclick="show('config')">
+        <div class="comp-icon"><i class="ti ti-settings"></i></div>
+        <div class="comp-name">Config</div>
+        <div class="comp-file">configs/config.yaml</div>
+        <span class="badge">hyperparameters</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Detail panel -->
+<div id="detail">
+  <button id="detail-close" onclick="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
+  <h2 id="det-name"></h2>
+  <div class="det-file" id="det-file"></div>
+  <div class="det-chips" id="det-chips"></div>
+  <div id="det-body"></div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--gray200)"></div>Developer workflow</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--teal200)"></div>Data &amp; training</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--purple200)"></div>Experiment tracking</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--blue200)"></div>Inference &amp; monitoring</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--amber200)"></div>Infrastructure</div>
+</div>
+
+<script>
+const DATA = {
+  git: {
+    name: 'Git branching workflow',
+    file: 'CONTRIBUTING.md',
+    chips: ['main', 'dev', 'feature/*', 'fix/*', 'hotfix/*'],
+    body: `<p>The project uses a lightweight GitFlow model. <strong>main</strong> is always production-ready; no direct pushes are allowed. All work lands in <strong>dev</strong> via pull request from a <strong>feature/*</strong> branch.</p>
+<p>Commit messages follow Conventional Commits — <code>feat(agent): add Double Q-Learning</code>. PRs require at least one reviewer and all CI checks to pass before merging.</p>
+<p>Hotfixes use <strong>hotfix/*</strong> branches that merge to both main and dev to keep branches in sync.</p>`
+  },
+  ci: {
+    name: 'CI/CD pipeline',
+    file: '.github/workflows/ci_cd.yml',
+    chips: ['lint', 'unit tests', 'API smoke test', 'preprocess', 'docker build', 'retrain (scheduled)'],
+    body: `<p>GitHub Actions runs five jobs in sequence on every push to main/dev and every PR to main.</p>
+<p><strong>Lint</strong> enforces Black formatting, isort import order, and flake8 style. <strong>Unit tests</strong> run pytest with coverage reporting to Codecov. <strong>API smoke test</strong> starts a live uvicorn server and hits /health and /predict with curl.</p>
+<p><strong>Preprocess</strong> regenerates clean_sensor_data.csv so training always uses fresh features. <strong>Docker build & push</strong> fires only on main-branch pushes and publishes to GitHub Container Registry (ghcr.io).</p>
+<p><strong>Retraining</strong> is scheduled every Sunday at 02:00 UTC via cron, or can be triggered manually via workflow_dispatch. It runs both agents, evaluates them, and uploads models and MLflow runs as artifacts.</p>`
+  },
+  tests: {
+    name: 'Test suite',
+    file: 'tests/test_all.py',
+    chips: ['pytest', 'pytest-cov', 'httpx', 'TestClient'],
+    body: `<p>Tests cover the simulator, the RL environment, both agents, and the FastAPI endpoints. The suite uses <code>httpx.TestClient</code> to hit the API in-process — no live server needed.</p>
+<p>Coverage is reported to Codecov via the CI/CD pipeline. Tests are split so the API tests run separately from unit tests, matching the two CI jobs.</p>`
+  },
+  preprocess: {
+    name: 'Data preprocessing pipeline',
+    file: 'data/preprocess.py',
+    chips: ['generate', 'clean', 'feature engineering', 'min-max scaling', 'scikit-learn'],
+    body: `<p>Generates 2,000 rows of synthetic 15-minute HVAC sensor readings with realistic noise (4% missing values, 15 sensor outlier glitches), then applies a four-step cleaning pipeline.</p>
+<p><strong>Cleaning:</strong> duplicate removal, temperature clamping to physical bounds (10–45°C), median imputation for continuous sensors, mode imputation for occupancy.</p>
+<p><strong>Feature engineering</strong> derives: <code>temp_deviation</code>, <code>comfort_violation</code>, <code>temp_delta</code> (heat-load proxy), <code>hour_sin/cos</code> (cyclical encoding), <code>is_business_hours</code>, <code>cumulative_energy</code> per day, and <code>comfort_cost</code> (deviation × occupancy).</p>
+<p>All continuous features are Min-Max scaled via scikit-learn. Output is saved to <code>data/clean_sensor_data.csv</code> and consumed by downstream DVC stages.</p>`
+  },
+  env: {
+    name: 'HVAC simulator & environment',
+    file: 'env.py',
+    chips: ['HVACSimulator', 'HVACEnv', 'QLearningAgent', 'SARSAAgent', 'MDP'],
+    body: `<p>The simulator models 15-minute indoor-temperature dynamics driven by outdoor temperature (sinusoidal daily cycle), occupancy load, and HVAC action (OFF / FAN / COOL / HEAT). Noise is injected via <code>numpy.random</code> with a fixed seed for reproducibility.</p>
+<p>The environment discretises the continuous state into a 7×5×2×4 = 280-state space and computes a weighted reward: <code>-w_energy·kWh - w_comfort·|ΔT|·occupancy - w_carbon·kg_CO₂</code>, clipped to [-100, 100] via tanh.</p>
+<p>Both agents subclass <code>_BaseAgent</code> which provides ε-greedy action selection, Q-table management, and save/load. Q-Learning uses the off-policy max-Q target; SARSA uses the on-policy next-action target.</p>`
+  },
+  train: {
+    name: 'RL training & evaluation',
+    file: 'train.py',
+    chips: ['Q-Learning', 'SARSA', 'grid search', '5-seed eval', 'MLflow logging'],
+    body: `<p>Single CLI entry point for all training workflows. <code>python train.py</code> trains Q-Learning; <code>--agent sarsa</code> trains SARSA; <code>--agent both</code> trains both sequentially.</p>
+<p><strong>Hyperparameter tuning</strong> (<code>--tune</code>) performs an exhaustive grid search over learning rate, discount factor, and epsilon decay, evaluating each combination over 100 episodes and saving the best config to <code>configs/best_{agent}_config.yaml</code>.</p>
+<p><strong>Evaluation</strong> (<code>--evaluate</code>) runs 5-seed cross-validation against both trained agents and a fixed-action baseline, producing a comparison table and CSV. Results are plotted to <code>plots/comparison.png</code>.</p>
+<p>Every training run logs hyperparameters, per-episode metrics, and final summaries to MLflow. Models exceeding the episode best-reward are checkpointed to <code>models/best_{agent}.pkl</code>.</p>`
+  },
+  mlflow: {
+    name: 'MLflow experiment tracking',
+    file: 'mlruns/ · configs/',
+    chips: ['run tracking', 'metric logging', 'artifact storage', 'model registry', 'Staging/Production'],
+    body: `<p>Every training run creates an MLflow run under the <code>hvac_rl_optimization</code> experiment, logging all hyperparameters and per-episode metrics (reward, energy, carbon, epsilon).</p>
+<p>The <code>--register</code> flag promotes trained models to the MLflow Model Registry, transitioning them to <em>Staging</em>. The MLflow UI is served at <code>http://localhost:5000</code> via docker-compose.</p>
+<p>The tracking URI is configurable via <code>configs/config.yaml</code> or the <code>MLFLOW_TRACKING_URI</code> environment variable, making it easy to swap between local runs and a cloud backend.</p>`
+  },
+  dvc: {
+    name: 'DVC pipeline versioning',
+    file: 'dvc.yaml',
+    chips: ['preprocess', 'train_qlearning', 'train_sarsa', 'tune', 'evaluate', 'DAG'],
+    body: `<p>DVC defines a five-stage DAG: <strong>preprocess → train_qlearning + train_sarsa → tune → evaluate</strong>. Running <code>dvc repro</code> reruns only stale stages — if the config changes, only training and evaluation rerun; if the sensor data changes, the full pipeline reruns.</p>
+<p>Stage outputs (model files, configs, evaluation CSV) are tracked by DVC and can be pushed to remote storage (S3, GCS, Azure Blob). This makes experiments fully reproducible from any commit in Git history.</p>`
+  },
+  api: {
+    name: 'FastAPI inference server',
+    file: 'app.py',
+    chips: ['GET /health', 'GET /models', 'POST /predict', 'GET /metrics', 'GET /monitoring/drift', 'GET /monitoring/evidently'],
+    body: `<p>Serves trained Q-table models via a Pydantic-validated REST API. The <code>/predict</code> endpoint accepts sensor readings (indoor_temp, outdoor_temp, occupancy, hour_of_day), discretises the state, and returns the recommended action with Q-values.</p>
+<p>Models are loaded on first request and cached in memory. Every prediction is logged to <code>logs/inference.jsonl</code> and sent to the drift monitor for sliding-window analysis.</p>
+<p>The new <code>/monitoring/evidently</code> endpoint triggers a full EvidentlyAI drift report comparing the reference distribution against the last 500 predictions, returning per-feature drift status and an HTML report path.</p>
+<p>Interactive Swagger docs are available at <code>/docs</code>.</p>`
+  },
+  monitor: {
+    name: 'PSI drift monitor',
+    file: 'monitoring/monitor.py',
+    chips: ['PSI', 'sliding window 500', 'action dist', 'temp bin dist', 'JSONL logging'],
+    body: `<p>A singleton <code>PredictionMonitor</code> instance maintains a sliding deque of the last 500 predictions. On every call to <code>/monitoring/drift</code> it computes the Population Stability Index (PSI) for two distributions: action selection and indoor-temperature bin.</p>
+<p><strong>PSI &lt; 0.10</strong> → stable. <strong>0.10–0.20</strong> → warn. <strong>&gt;0.20</strong> → alert (written to <code>logs/drift_alerts.jsonl</code>).</p>
+<p>Reference distributions are derived from a baseline evaluation run. The monitor can also be run standalone via <code>python -m monitoring.monitor --report</code>.</p>`
+  },
+  evidently: {
+    name: 'EvidentlyAI drift reports',
+    file: 'monitoring/drift_evidently.py',
+    chips: ['EvidentlyAI', 'DataDriftPreset', 'DataQualityPreset', 'HTML reports', 'PSI fallback'],
+    body: `<p>Full EvidentlyAI integration that generates interactive HTML drift reports saved to <code>reports/drift/</code>. Uses <code>DataDriftPreset</code> and <code>DataQualityPreset</code> to compare the reference dataset against recent inference traffic.</p>
+<p>The reference dataset is built from <code>data/clean_sensor_data.csv</code> (or a synthetic baseline if the file doesn't exist). Recent traffic is loaded from <code>logs/inference.jsonl</code>.</p>
+<p>If EvidentlyAI is not installed, the module automatically falls back to the PSI implementation so the API endpoint never errors. Run standalone with <code>python -m monitoring.drift_evidently --json</code>.</p>`
+  },
+  docker: {
+    name: 'Docker containers',
+    file: 'Dockerfile · docker-compose.yaml',
+    chips: ['multi-stage build', 'python:3.11-slim', 'FastAPI', 'MLflow UI', 'port 8000/5000'],
+    body: `<p>The Dockerfile uses a two-stage build: a builder stage installs dependencies into <code>/install</code>, then a lean runtime stage copies only the installed packages. The final image is ~200MB.</p>
+<p><code>docker-compose.yaml</code> brings up two services: the FastAPI inference server on port 8000 and the MLflow tracking server on port 5000. The MLflow service shares a volume with the API for model artifacts.</p>
+<p>The <code>MLFLOW_TRACKING_URI</code> environment variable wires the API container to the MLflow service automatically.</p>`
+  },
+  k8s: {
+    name: 'Kubernetes orchestration',
+    file: 'k8s/manifests.yaml',
+    chips: ['Deployment', 'Service', 'Ingress', 'HPA', '2–10 replicas', 'CPU 70%'],
+    body: `<p>The manifests deploy a production-grade HVAC RL service: a <strong>Deployment</strong> with 2 replicas and rolling update strategy, a <strong>ClusterIP Service</strong>, an <strong>Ingress</strong> routing <code>hvac-rl.example.com</code> to the service, and an <strong>HPA</strong> that scales between 2 and 10 replicas when CPU exceeds 70%.</p>
+<p>Pod readiness and liveness probes hit <code>/health</code> so Kubernetes only routes traffic to healthy containers. Resource limits are set per-container to prevent noisy-neighbour issues.</p>`
+  },
+  argocd: {
+    name: 'ArgoCD GitOps',
+    file: 'k8s/argocd-app.yaml',
+    chips: ['GitOps', 'auto-sync', 'self-heal', 'main branch'],
+    body: `<p>ArgoCD continuously reconciles the cluster state against the <code>main</code> branch. Any merged PR that touches <code>k8s/manifests.yaml</code> automatically triggers a rollout — no manual <code>kubectl apply</code> needed.</p>
+<p>Self-healing is enabled, so manual changes made directly to the cluster are automatically reverted to match the Git state. Every deployment is therefore fully auditable as a Git commit.</p>`
+  },
+  config: {
+    name: 'Configuration management',
+    file: 'configs/config.yaml',
+    chips: ['YAML', 'hyperparameters', 'MLflow URI', 'paths', 'best configs'],
+    body: `<p>All hyperparameters, environment weights, MLflow settings, and file paths are centralised in <code>configs/config.yaml</code>. The training CLI accepts a <code>--config</code> flag to swap configs at runtime.</p>
+<p>Hyperparameter tuning writes per-agent best configs to <code>configs/best_qlearning_config.yaml</code> and <code>configs/best_sarsa_config.yaml</code>, which the CI/CD retraining job uses so scheduled runs always use the tuned settings.</p>`
+  }
+};
+
+let active = null;
+
+function show(id) {
+  // Deactivate previous
+  if (active) {
+    document.querySelectorAll(`.comp[data-id="${active}"]`).forEach(el => el.classList.remove('active'));
+  }
+  active = id;
+  document.querySelectorAll(`.comp[data-id="${id}"]`).forEach(el => el.classList.add('active'));
+
+  const d = DATA[id];
+  document.getElementById('det-name').textContent = d.name;
+  document.getElementById('det-file').textContent = d.file;
+  document.getElementById('det-chips').innerHTML = d.chips.map(c => `<span class="chip">${c}</span>`).join('');
+  document.getElementById('det-body').innerHTML = d.body;
+
+  const panel = document.getElementById('detail');
+  panel.classList.add('show');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeDetail() {
+  document.getElementById('detail').classList.remove('show');
+  if (active) {
+    document.querySelectorAll(`.comp[data-id="${active}"]`).forEach(el => el.classList.remove('active'));
+    active = null;
+  }
+}
+</script>
+
+</body>
+</html>

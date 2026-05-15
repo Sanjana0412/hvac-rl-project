@@ -1,0 +1,227 @@
+name: HVAC RL — CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Automated retraining every Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      run_training:
+        description: "Run full training (slow)"
+        required: false
+        default: "false"
+
+env:
+  PYTHON_VERSION: "3.10"
+  MLFLOW_TRACKING_URI: mlruns
+
+jobs:
+  # ── 1. Lint & Static Analysis ──────────────────────────────────────────────
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install lint tools
+        run: pip install flake8 black isort
+
+      - name: Black format check
+        run: black --check --diff .
+
+      - name: isort import order check
+        run: isort --check-only --diff .
+
+      - name: flake8 style check
+        run: flake8 . --max-line-length=120 --exclude=mlruns,__pycache__,.git,data
+
+  # ── 2. Unit Tests ──────────────────────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-cov fastapi uvicorn pydantic httpx
+
+      - name: Run unit tests
+        run: pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing --ignore=tests/test_api.py
+
+      - name: Run API tests
+        run: pytest tests/test_api.py -v
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: coverage.xml
+
+  # ── 3. Data Preprocessing ─────────────────────────────────────────────────
+  preprocess:
+    name: Data Preprocessing
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run preprocessing pipeline
+        run: python data/preprocess.py --rows 2000
+
+      - name: Upload clean dataset artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clean-sensor-data-${{ github.sha }}
+          path: data/clean_sensor_data.csv
+          retention-days: 14
+
+  # ── 4. API Smoke Test ─────────────────────────────────────────────────────
+  api-test:
+    name: FastAPI Smoke Test
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt fastapi uvicorn pydantic httpx pytest
+
+      - name: Start API in background
+        run: |
+          uvicorn app:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+        env:
+          MLFLOW_TRACKING_URI: mlruns
+
+      - name: Health check
+        run: curl -f http://localhost:8000/health
+
+      - name: Predict endpoint check
+        run: |
+          curl -f -X POST http://localhost:8000/predict \
+            -H "Content-Type: application/json" \
+            -d '{"indoor_temp": 25.0, "outdoor_temp": 30.0, "occupancy": 1, "hour_of_day": 14.0, "model": "qlearning"}'
+
+      - name: Drift endpoint check
+        run: curl -f http://localhost:8000/monitoring/drift || echo "insufficient data — expected on cold start"
+
+  # ── 5. Docker Build & Push ────────────────────────────────────────────────
+  docker:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: [api-test, preprocess]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/hvac-rl:latest
+            ghcr.io/${{ github.repository_owner }}/hvac-rl:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── 6. Automated Retraining ───────────────────────────────────────────────
+  retrain:
+    name: Retrain RL Agents
+    runs-on: ubuntu-latest
+    needs: preprocess
+    if: |
+      github.event_name == 'schedule' ||
+      github.event.inputs.run_training == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download preprocessed data
+        uses: actions/download-artifact@v4
+        with:
+          name: clean-sensor-data-${{ github.sha }}
+          path: data/
+
+      - name: Run Q-Learning training
+        run: python train.py --agent qlearning --config configs/config.yaml
+        env:
+          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
+
+      - name: Run SARSA training
+        run: python train.py --agent sarsa --config configs/config.yaml
+        env:
+          MLFLOW_TRACKING_URI: ${{ env.MLFLOW_TRACKING_URI }}
+
+      - name: Evaluate trained models
+        run: python train.py --evaluate
+
+      - name: Upload trained models
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-models-${{ github.sha }}
+          path: models/
+          retention-days: 30
+
+      - name: Upload MLflow runs
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlruns-${{ github.sha }}
+          path: mlruns/
+          retention-days: 30
+
+      - name: Upload evaluation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-${{ github.sha }}
+          path: |
+            experiments/evaluation.csv
+            plots/
+          retention-days: 30

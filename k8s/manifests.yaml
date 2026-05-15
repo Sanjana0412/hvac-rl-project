@@ -1,0 +1,139 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hvac-rl
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hvac-config
+  namespace: hvac-rl
+data:
+  MLFLOW_TRACKING_URI: "http://mlflow:5000"
+---
+# ── API Deployment ───────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hvac-api
+  namespace: hvac-rl
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: hvac-api}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}
+  template:
+    metadata:
+      labels: {app: hvac-api}
+    spec:
+      containers:
+        - name: hvac-api
+          image: ghcr.io/your-org/hvac-rl:latest
+          imagePullPolicy: Always
+          ports:
+            - {containerPort: 8000}
+          envFrom:
+            - configMapRef: {name: hvac-config}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits:   {cpu: 500m, memory: 512Mi}
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hvac-api
+  namespace: hvac-rl
+spec:
+  selector: {app: hvac-api}
+  ports:
+    - {port: 80, targetPort: 8000}
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hvac-api-hpa
+  namespace: hvac-rl
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hvac-api
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 70}
+---
+# ── MLflow Deployment ────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: hvac-rl
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mlflow}
+  template:
+    metadata:
+      labels: {app: mlflow}
+    spec:
+      containers:
+        - name: mlflow
+          image: ghcr.io/mlflow/mlflow:latest
+          args: ["mlflow", "server", "--host=0.0.0.0", "--port=5000",
+                 "--backend-store-uri=sqlite:///mlflow.db",
+                 "--default-artifact-root=/mlruns"]
+          ports: [{containerPort: 5000}]
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits:   {cpu: 500m, memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: hvac-rl
+spec:
+  selector: {app: mlflow}
+  ports:
+    - {port: 5000, targetPort: 5000}
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hvac-ingress
+  namespace: hvac-rl
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: hvac-api.your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: hvac-api, port: {number: 80}}
+    - host: mlflow.your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: mlflow, port: {number: 5000}}

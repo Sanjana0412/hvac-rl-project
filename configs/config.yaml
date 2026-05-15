@@ -1,0 +1,38 @@
+simulator:
+  seed: 42
+  dt_min: 15            # 15 min steps → 96 steps = 1 day
+
+environment:
+  w_energy:  1.0        # energy penalty weight
+  w_comfort: 2.0        # comfort violation weight
+  w_carbon:  0.5        # carbon emission weight
+
+agent:
+  learning_rate: 0.1
+  discount:      0.95
+  epsilon_start: 1.0
+  epsilon_min:   0.05
+  epsilon_decay: 0.995
+
+training:
+  episodes: 500
+
+evaluation:
+  episodes: 100
+
+tuning:
+  tune_episodes: 100
+  param_grid:
+    learning_rate: [0.05, 0.1, 0.2]
+    discount:      [0.90, 0.95, 0.99]
+    epsilon_decay: [0.990, 0.995, 0.999]
+
+mlflow:
+  tracking_uri:    mlruns
+  experiment_name: hvac_rl_optimization
+
+paths:
+  models:      models/
+  plots:       plots/
+  logs:        logs/
+  experiments: experiments/

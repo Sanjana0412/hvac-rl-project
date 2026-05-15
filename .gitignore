@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+
+# Model binaries — tracked by DVC, not Git
+
+# DVC cache (local only)
+.dvc/cache
+.dvc/tmp
+
+# MLflow local runs
+mlruns/
+
+# Generated outputs — reproducible via DVC pipeline
+logs/
+plots/
+experiments/
+
+# Do NOT ignore models/ or configs/best_*.yaml — DVC .dvc files track them
+# models/  ← removed: DVC manages this via dvc.yaml outs
+
+# OS
+.DS_Store

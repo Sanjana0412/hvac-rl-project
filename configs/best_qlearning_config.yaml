@@ -1,0 +1,40 @@
+agent:
+  discount: 0.95
+  epsilon_decay: 0.99
+  epsilon_min: 0.05
+  epsilon_start: 1.0
+  learning_rate: 0.1
+environment:
+  w_carbon: 0.5
+  w_comfort: 2.0
+  w_energy: 1.0
+evaluation:
+  episodes: 100
+mlflow:
+  experiment_name: hvac_rl_optimization
+  tracking_uri: mlruns
+paths:
+  experiments: experiments/
+  logs: logs/
+  models: models/
+  plots: plots/
+simulator:
+  dt_min: 15
+  seed: 42
+training:
+  episodes: 500
+tuning:
+  param_grid:
+    discount:
+    - 0.9
+    - 0.95
+    - 0.99
+    epsilon_decay:
+    - 0.99
+    - 0.995
+    - 0.999
+    learning_rate:
+    - 0.05
+    - 0.1
+    - 0.2
+  tune_episodes: 100

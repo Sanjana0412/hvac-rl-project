@@ -1,0 +1,48 @@
+stages:
+  preprocess:
+    cmd: python data/preprocess.py
+    deps:
+      - data/preprocess.py
+    outs:
+      - data/raw_sensor_data.csv:   {cache: true}
+      - data/clean_sensor_data.csv: {cache: true}
+
+  train_qlearning:
+    cmd: python train.py --agent qlearning --episodes 500
+    deps:
+      - train.py
+      - env.py
+      - configs/config.yaml
+    outs:
+      - models/best_qlearning.pkl
+
+  train_sarsa:
+    cmd: python train.py --agent sarsa --episodes 500
+    deps:
+      - train.py
+      - env.py
+      - configs/config.yaml
+    outs:
+      - models/best_sarsa.pkl
+
+  tune:
+    cmd: python train.py --agent both --tune
+    deps:
+      - train.py
+      - env.py
+      - configs/config.yaml
+    outs:
+      - configs/best_qlearning_config.yaml: {cache: false}
+      - configs/best_sarsa_config.yaml:     {cache: false}
+
+  evaluate:
+    cmd: python train.py --evaluate
+    deps:
+      - train.py
+      - env.py
+      - models/best_qlearning.pkl
+      - models/best_sarsa.pkl
+    metrics:
+      - experiments/evaluation.csv: {cache: false}
+    plots:
+      - plots/comparison.png
