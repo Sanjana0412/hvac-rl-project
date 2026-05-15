@@ -26,15 +26,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from env import (
-    ACTION_LABELS,
-    HOUR_BINS,
-    TEMP_IN_BINS,
-    TEMP_OUT_BINS,
-    HVACEnv,
-    QLearningAgent,
-    SARSAAgent,
-)
+from env import (ACTION_LABELS, HOUR_BINS, TEMP_IN_BINS, TEMP_OUT_BINS,
+                 HVACEnv, QLearningAgent, SARSAAgent)
 from monitoring.drift_evidently import run_drift_analysis
 from monitoring.monitor import monitor as pred_monitor
 
