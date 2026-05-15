@@ -1,0 +1,110 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python data/preprocess.py
+    deps:
+    - path: data/preprocess.py
+      hash: md5
+      md5: 8b69c8795859a5174c581c5408727940
+      size: 11216
+    outs:
+    - path: data/clean_sensor_data.csv
+      hash: md5
+      md5: d4aea37f303fd7ec3f9475d5e9957b08
+      size: 384607
+    - path: data/raw_sensor_data.csv
+      hash: md5
+      md5: 875e5c3e0aa08778899f280590a1b49a
+      size: 84595
+  train_qlearning:
+    cmd: python train.py --agent qlearning --episodes 500
+    deps:
+    - path: configs/config.yaml
+      hash: md5
+      md5: ba8dd541f57f5337992fbacc93e6e0cd
+      size: 753
+    - path: env.py
+      hash: md5
+      md5: 25ae96dde1ab513eb287702fbbb5403e
+      size: 8391
+    - path: train.py
+      hash: md5
+      md5: 3b3b1cd5c808916234c6bcd3e2018280
+      size: 16724
+    outs:
+    - path: models/best_qlearning.pkl
+      hash: md5
+      md5: 9acb5b415db01de756ce572d1c4d22a9
+      size: 4769
+  train_sarsa:
+    cmd: python train.py --agent sarsa --episodes 500
+    deps:
+    - path: configs/config.yaml
+      hash: md5
+      md5: ba8dd541f57f5337992fbacc93e6e0cd
+      size: 753
+    - path: env.py
+      hash: md5
+      md5: 25ae96dde1ab513eb287702fbbb5403e
+      size: 8391
+    - path: train.py
+      hash: md5
+      md5: 3b3b1cd5c808916234c6bcd3e2018280
+      size: 16724
+    outs:
+    - path: models/best_sarsa.pkl
+      hash: md5
+      md5: 8133074378ab107fc742eaddc2bd0dba
+      size: 4765
+  tune:
+    cmd: python train.py --agent both --tune
+    deps:
+    - path: configs/config.yaml
+      hash: md5
+      md5: ba8dd541f57f5337992fbacc93e6e0cd
+      size: 753
+    - path: env.py
+      hash: md5
+      md5: 25ae96dde1ab513eb287702fbbb5403e
+      size: 8391
+    - path: train.py
+      hash: md5
+      md5: 3b3b1cd5c808916234c6bcd3e2018280
+      size: 16724
+    outs:
+    - path: configs/best_qlearning_config.yaml
+      hash: md5
+      md5: 5123378455885caa8c102b6133a4fad3
+      size: 645
+    - path: configs/best_sarsa_config.yaml
+      hash: md5
+      md5: 2827f8b877d30bf2170d0eaaa8ed8293
+      size: 646
+  evaluate:
+    cmd: python train.py --evaluate
+    deps:
+    - path: env.py
+      hash: md5
+      md5: 25ae96dde1ab513eb287702fbbb5403e
+      size: 8391
+    - path: models/best_qlearning.pkl
+      hash: md5
+      md5: 9acb5b415db01de756ce572d1c4d22a9
+      size: 4769
+    - path: models/best_sarsa.pkl
+      hash: md5
+      md5: 8133074378ab107fc742eaddc2bd0dba
+      size: 4765
+    - path: train.py
+      hash: md5
+      md5: 3b3b1cd5c808916234c6bcd3e2018280
+      size: 16724
+    outs:
+    - path: experiments/evaluation.csv
+      hash: md5
+      md5: bc0c948c29eb3397514e23f318d71d9f
+      size: 212
+    - path: plots/comparison.png
+      hash: md5
+      md5: 1bc8a9334f1baae15f71bc9d0964d8cb
+      size: 41609
