@@ -1,9 +1,9 @@
 agent:
-  discount: 0.9
+  discount: 0.95
   epsilon_decay: 0.99
   epsilon_min: 0.05
   epsilon_start: 1.0
-  learning_rate: 0.2
+  learning_rate: 0.1
 environment:
   w_carbon: 0.5
   w_comfort: 2.0
