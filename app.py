@@ -2,16 +2,8 @@
 app.py — FastAPI Inference Server
 ==================================
 Serves trained HVAC RL policies via REST API.
-
-Endpoints:
-  GET  /health       — liveness check
-  GET  /models       — list available models
-  POST /predict      — get recommended HVAC action
-  GET  /metrics      — latest evaluation results
-
-Run:
-  uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 """
+
 import json
 import logging
 import os
@@ -33,24 +25,19 @@ from env import (
     QLearningAgent,
     SARSAAgent,
 )
-
 from monitoring.drift_evidently import run_drift_analysis
 from monitoring.monitor import monitor as pred_monitor
 
 
-# ─────────────────────────────────────────────
-# Logging setup
-# ─────────────────────────────────────────────
+# ---------------- Logging ----------------
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
+    format="%(asctime)s %(levelname)s %(message)s",
 )
 log = logging.getLogger("hvac-api")
 
 
-# ─────────────────────────────────────────────
-# App setup
-# ─────────────────────────────────────────────
+# ---------------- App ----------------
 app = FastAPI(
     title="HVAC RL API",
     version="1.0.0",
@@ -65,9 +52,7 @@ app.add_middleware(
 )
 
 
-# ─────────────────────────────────────────────
-# Paths / Config
-# ─────────────────────────────────────────────
+# ---------------- Config ----------------
 MODELS = {
     "qlearning": "models/best_qlearning.pkl",
     "sarsa": "models/best_sarsa.pkl",
@@ -76,12 +61,10 @@ MODELS = {
 LOG_FILE = Path("logs/inference.jsonl")
 AUDIT_LOG = Path("logs/audit.jsonl")
 
-_cache: dict = {}
+_cache = {}
 
 
-# ─────────────────────────────────────────────
-# Utilities
-# ─────────────────────────────────────────────
+# ---------------- Utilities ----------------
 def available_models():
     return [k for k, v in MODELS.items() if os.path.isfile(v)]
 
@@ -91,6 +74,7 @@ def load_model(name: str):
         return _cache[name]
 
     path = MODELS.get(name)
+
     if not path or not os.path.isfile(path):
         raise HTTPException(
             status_code=404,
@@ -113,7 +97,7 @@ def load_model(name: str):
     agent.q_table = data["q_table"]
     _cache[name] = agent
 
-    log.info(f"Loaded model: {name}")
+    log.info("Loaded model: %s", name)
     return agent
 
 
@@ -147,9 +131,7 @@ def log_inference(req, resp):
         )
 
 
-# ─────────────────────────────────────────────
-# Schemas
-# ─────────────────────────────────────────────
+# ---------------- Schemas ----------------
 class PredictRequest(BaseModel):
     indoor_temp: float = Field(..., ge=10.0, le=45.0)
     outdoor_temp: float = Field(..., ge=-10.0, le=50.0)
@@ -166,9 +148,7 @@ class PredictResponse(BaseModel):
     model: str
 
 
-# ─────────────────────────────────────────────
-# Endpoints
-# ─────────────────────────────────────────────
+# ---------------- Endpoints ----------------
 @app.get("/health")
 def health():
     return {
@@ -218,9 +198,9 @@ def predict(req: PredictRequest):
     try:
         pred_monitor.log(state, action, model=req.model)
     except Exception as e:
-        log.warning(f"monitoring failed: {e}")
+        log.warning("monitoring failed: %s", e)
 
-    log.info(f"predict | model={req.model} state={state} → action={action}")
+    log.info("predict | model=%s state=%s action=%s", req.model, state, action)
 
     return resp
 
@@ -247,9 +227,7 @@ def metrics():
     }
 
 
-# ─────────────────────────────────────────────
-# Monitoring endpoints
-# ─────────────────────────────────────────────
+# ---------------- Monitoring ----------------
 @app.get("/monitoring/drift")
 def drift_report():
     return pred_monitor.drift_report()
