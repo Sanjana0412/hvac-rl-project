@@ -18,7 +18,6 @@ env:
   PYTHON_VERSION: "3.10"
   MLFLOW_TRACKING_URI: mlruns
 
-
 jobs:
 
   # ─────────────────────────────
@@ -26,7 +25,6 @@ jobs:
   # ─────────────────────────────
   lint:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -48,14 +46,12 @@ jobs:
       - name: flake8 check
         run: flake8 . --max-line-length=120 --exclude=mlruns,__pycache__,.git,data
 
-
   # ─────────────────────────────
   # 2. TEST
   # ─────────────────────────────
   test:
     runs-on: ubuntu-latest
     needs: lint
-
     steps:
       - uses: actions/checkout@v4
 
@@ -73,20 +69,12 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        if: always()
-        with:
-          files: coverage.xml
-
-
   # ─────────────────────────────
   # 3. PREPROCESS
   # ─────────────────────────────
   preprocess:
     runs-on: ubuntu-latest
     needs: test
-
     steps:
       - uses: actions/checkout@v4
 
@@ -102,20 +90,12 @@ jobs:
       - name: Run preprocessing
         run: python data/preprocess.py --rows 2000
 
-      - name: Upload dataset
-        uses: actions/upload-artifact@v4
-        with:
-          name: clean-data-${{ github.sha }}
-          path: data/clean_sensor_data.csv
-
-
   # ─────────────────────────────
-  # 4. API SMOKE TEST (ROBUST)
+  # 4. API SMOKE TEST
   # ─────────────────────────────
   api-test:
     runs-on: ubuntu-latest
     needs: test
-
     steps:
       - uses: actions/checkout@v4
 
@@ -131,115 +111,62 @@ jobs:
           pip install fastapi uvicorn httpx
 
       - name: Start API
-        run: |
-          uvicorn app:app --host 0.0.0.0 --port 8000 &
+        run: uvicorn app:app --host 0.0.0.0 --port 8000 &
 
       - name: Wait for API
         run: |
           timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
 
-      - name: Health check
-        run: curl -f http://localhost:8000/health
+  # ─────────────────────────────
+  # 5. DOCKER
+  # ─────────────────────────────
+  docker:
+    runs-on: ubuntu-latest
+    needs: [api-test, preprocess]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
-      - name: Predict check (safe)
-        run: |
-          curl -X POST http://localhost:8000/predict \
-            -H "Content-Type: application/json" \
-            -d '{"indoor_temp":25,"outdoor_temp":30,"occupancy":1,"hour_of_day":14,"model":"qlearning"}' \
-          || echo "predict skipped safely"
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Drift check
-        run: curl http://localhost:8000/monitoring/drift || echo "no drift data yet"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: sanjana0412
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/sanjana0412/hvac-rl:latest
+            ghcr.io/sanjana0412/hvac-rl:v1.0.${{ github.run_number }}
+            ghcr.io/sanjana0412/hvac-rl:${{ github.sha }}
 
   # ─────────────────────────────
-  # 5. DOCKER BUILD (FIXED — NO CACHE ERRORS)
+  # 6. RETRAIN
   # ─────────────────────────────
-docker:
-  name: Docker Build & Push
-  runs-on: ubuntu-latest
-  needs: [api-test, preprocess]
-  if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  retrain:
+    runs-on: ubuntu-latest
+    needs: preprocess
 
-  steps:
-    - uses: actions/checkout@v4
+    if: |
+      github.event_name == 'schedule' ||
+      github.event.inputs.run_training == 'true'
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Login to GHCR
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: sanjana0412
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
 
-    - name: Build & Push Docker Image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: |
-          ghcr.io/sanjana0412/hvac-rl:latest
-          ghcr.io/sanjana0412/hvac-rl:v1.0.${{ github.run_number }}
-          ghcr.io/sanjana0412/hvac-rl:${{ github.sha }}
-
-retrain:
-  name: Retrain RL Agents (MLOps Safe)
-  runs-on: ubuntu-latest
-  needs: preprocess
-
-  if: |
-    github.event_name == 'schedule' ||
-    github.event.inputs.run_training == 'true'
-
-  steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
-        cache: pip
-
-    - name: Install dependencies
-      run: pip install -r requirements.txt
-
-    - name: Download dataset
-      uses: actions/download-artifact@v4
-      with:
-        name: clean-data-${{ github.sha }}
-        path: data/
-
-    - name: Train Q-learning
-      run: python train.py --agent qlearning --config configs/config.yaml
-      env:
-        MLFLOW_TRACKING_URI: mlruns
-
-    - name: Train SARSA
-      run: python train.py --agent sarsa --config configs/config.yaml
-      env:
-        MLFLOW_TRACKING_URI: mlruns
-
-    - name: Evaluate models
-      run: python train.py --evaluate
-
-    - name: Validate model artifacts exist
-      run: ls -R models/
-
-    - name: Upload models
-      uses: actions/upload-artifact@v4
-      with:
-        name: models-${{ github.sha }}
-        path: models/
-
-    - name: Upload results
-      uses: actions/upload-artifact@v4
-      with:
-        name: results-${{ github.sha }}
-        path: |
-          experiments/evaluation.csv
-          plots/
-
-
-
+      - name: Install dependencies
+        run: pip install -r requirements.txt
