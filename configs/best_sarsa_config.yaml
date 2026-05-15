@@ -1,5 +1,5 @@
 agent:
-  discount: 0.95
+  discount: 0.99
   epsilon_decay: 0.99
   epsilon_min: 0.05
   epsilon_start: 1.0
