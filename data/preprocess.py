@@ -19,19 +19,20 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 # ── Output paths ─────────────────────────────────────────────
-DATA_DIR   = os.path.join(os.path.dirname(__file__))
-RAW_PATH   = os.path.join(DATA_DIR, "raw_sensor_data.csv")
+DATA_DIR = os.path.join(os.path.dirname(__file__))
+RAW_PATH = os.path.join(DATA_DIR, "raw_sensor_data.csv")
 CLEAN_PATH = os.path.join(DATA_DIR, "clean_sensor_data.csv")
 
-COMFORT_LOW  = 20.0
+COMFORT_LOW = 20.0
 COMFORT_HIGH = 26.0
-TARGET_TEMP  = 23.0
-CARBON_INTENSITY = 0.82   # kg CO₂ / kWh (grid average)
+TARGET_TEMP = 23.0
+CARBON_INTENSITY = 0.82  # kg CO₂ / kWh (grid average)
 
 
 # ─────────────────────────────────────────────────────────────
 # 1. Synthetic data generation
 # ─────────────────────────────────────────────────────────────
+
 
 def generate_raw_data(n_rows: int = 2000, seed: int = 42) -> pd.DataFrame:
     """
@@ -39,20 +40,20 @@ def generate_raw_data(n_rows: int = 2000, seed: int = 42) -> pd.DataFrame:
     missing values, and outliers so the cleaning pipeline has something
     to do.
     """
-    rng  = np.random.default_rng(seed)
+    rng = np.random.default_rng(seed)
     rows = []
 
-    indoor_temp  = float(rng.uniform(22.0, 26.0))
+    indoor_temp = float(rng.uniform(22.0, 26.0))
     for step in range(n_rows):
-        hour    = (step % 96) / 4          # 96 steps per day, 15-min each
-        day     = step // 96
+        hour = (step % 96) / 4  # 96 steps per day, 15-min each
+        day = step // 96
 
         # Outdoor temperature: sinusoidal daily cycle + inter-day variation
         outdoor_temp = (
             30.0
             + 6.5 * np.sin(2 * np.pi * (hour - 6) / 24)
             + rng.normal(0, 0.8)
-            + rng.normal(0, 0.3) * (day % 7)   # weekly drift
+            + rng.normal(0, 0.3) * (day % 7)  # weekly drift
         )
 
         # Occupancy: business hours with lunch dip
@@ -66,47 +67,49 @@ def generate_raw_data(n_rows: int = 2000, seed: int = 42) -> pd.DataFrame:
         # Action chosen (simulate a mixed policy)
         action = int(rng.choice([0, 1, 2, 3], p=[0.25, 0.25, 0.30, 0.20]))
         power_map = {0: 0.0, 1: 0.5, 2: 1.1, 3: 1.9}
-        cool_map  = {0: 0.0, 1: 0.6, 2: 1.4, 3: 2.3}
-        power     = power_map[action]
-        cool      = cool_map[action]
+        cool_map = {0: 0.0, 1: 0.6, 2: 1.4, 3: 2.3}
+        power = power_map[action]
+        cool = cool_map[action]
 
         # Indoor temperature dynamics
         delta = (
             0.12 * (outdoor_temp - indoor_temp)
             + (0.35 if 8 <= hour <= 17 else 0.0)
-            + 0.6  * occupancy
+            + 0.6 * occupancy
             - cool
             + rng.normal(0, 0.08)
         )
         indoor_temp = float(np.clip(indoor_temp + delta, 10.0, 45.0))
 
-        energy = power * (15 / 60)          # kWh per 15-min slot
+        energy = power * (15 / 60)  # kWh per 15-min slot
         carbon = energy * CARBON_INTENSITY
 
-        rows.append({
-            "step":          step,
-            "day":           day,
-            "hour":          round(hour, 2),
-            "indoor_temp":   round(indoor_temp, 2),
-            "outdoor_temp":  round(outdoor_temp, 2),
-            "occupancy":     occupancy,
-            "action":        action,
-            "energy_kwh":    round(energy, 4),
-            "carbon_kg":     round(carbon, 5),
-        })
+        rows.append(
+            {
+                "step": step,
+                "day": day,
+                "hour": round(hour, 2),
+                "indoor_temp": round(indoor_temp, 2),
+                "outdoor_temp": round(outdoor_temp, 2),
+                "occupancy": occupancy,
+                "action": action,
+                "energy_kwh": round(energy, 4),
+                "carbon_kg": round(carbon, 5),
+            }
+        )
 
     df = pd.DataFrame(rows)
 
     # ── Inject realistic dirt ────────────────────────────────
-    mask_missing = rng.random(len(df)) < 0.04          # 4 % missing
-    df.loc[mask_missing, "indoor_temp"]  = np.nan
+    mask_missing = rng.random(len(df)) < 0.04  # 4 % missing
+    df.loc[mask_missing, "indoor_temp"] = np.nan
     df.loc[rng.random(len(df)) < 0.03, "outdoor_temp"] = np.nan
-    df.loc[rng.random(len(df)) < 0.02, "occupancy"]    = np.nan
+    df.loc[rng.random(len(df)) < 0.02, "occupancy"] = np.nan
 
     # Hard outliers (sensor glitch)
     outlier_idx = rng.choice(len(df), size=15, replace=False)
-    df.loc[outlier_idx[:8],  "indoor_temp"]  = rng.uniform(50, 80, 8)
-    df.loc[outlier_idx[8:],  "outdoor_temp"] = rng.uniform(-30, -10, 7)
+    df.loc[outlier_idx[:8], "indoor_temp"] = rng.uniform(50, 80, 8)
+    df.loc[outlier_idx[8:], "outdoor_temp"] = rng.uniform(-30, -10, 7)
 
     return df
 
@@ -114,6 +117,7 @@ def generate_raw_data(n_rows: int = 2000, seed: int = 42) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────
 # 2. Cleaning
 # ─────────────────────────────────────────────────────────────
+
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -132,7 +136,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     print(f"  [clean] dropped {n_before - len(df)} duplicate rows")
 
     # Step 2 — outlier clamping
-    df["indoor_temp"]  = df["indoor_temp"].clip(10.0, 45.0)
+    df["indoor_temp"] = df["indoor_temp"].clip(10.0, 45.0)
     df["outdoor_temp"] = df["outdoor_temp"].clip(-10.0, 50.0)
 
     # Step 3 — imputation
@@ -150,7 +154,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
     # Step 4 — type enforcement
     df["occupancy"] = df["occupancy"].astype(int)
-    df["action"]    = df["action"].astype(int)
+    df["action"] = df["action"].astype(int)
 
     return df
 
@@ -158,6 +162,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────
 # 3. Feature engineering
 # ─────────────────────────────────────────────────────────────
+
 
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -174,17 +179,17 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    df["temp_deviation"]    = (df["indoor_temp"] - TARGET_TEMP).abs()
+    df["temp_deviation"] = (df["indoor_temp"] - TARGET_TEMP).abs()
     df["comfort_violation"] = (
         (df["indoor_temp"] < COMFORT_LOW) | (df["indoor_temp"] > COMFORT_HIGH)
     ).astype(int) * df["occupancy"]
 
-    df["temp_delta"]        = df["indoor_temp"] - df["outdoor_temp"]
-    df["hour_sin"]          = np.sin(2 * np.pi * df["hour"] / 24)
-    df["hour_cos"]          = np.cos(2 * np.pi * df["hour"] / 24)
+    df["temp_delta"] = df["indoor_temp"] - df["outdoor_temp"]
+    df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
+    df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
     df["is_business_hours"] = ((df["hour"] >= 9) & (df["hour"] <= 18)).astype(int)
     df["cumulative_energy"] = df.groupby("day")["energy_kwh"].cumsum()
-    df["comfort_cost"]      = df["temp_deviation"] * df["occupancy"]
+    df["comfort_cost"] = df["temp_deviation"] * df["occupancy"]
 
     return df
 
@@ -194,9 +199,14 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────
 
 SCALE_COLS = [
-    "indoor_temp", "outdoor_temp", "temp_deviation",
-    "temp_delta",  "energy_kwh",   "carbon_kg",
-    "comfort_cost", "cumulative_energy",
+    "indoor_temp",
+    "outdoor_temp",
+    "temp_deviation",
+    "temp_delta",
+    "energy_kwh",
+    "carbon_kg",
+    "comfort_cost",
+    "cumulative_energy",
 ]
 
 
@@ -218,6 +228,7 @@ def normalise(df: pd.DataFrame, scaler: MinMaxScaler = None):
 # ─────────────────────────────────────────────────────────────
 # 5. Full pipeline
 # ─────────────────────────────────────────────────────────────
+
 
 def run_pipeline(input_path: str = None, n_rows: int = 2000, seed: int = 42):
     print("=" * 55)
@@ -255,8 +266,20 @@ def run_pipeline(input_path: str = None, n_rows: int = 2000, seed: int = 42):
 
     # Quick stats
     print("  ── Summary statistics (selected columns) ──")
-    print(df_feat[["indoor_temp", "outdoor_temp", "energy_kwh",
-                    "comfort_violation", "temp_deviation"]].describe().round(3).to_string())
+    print(
+        df_feat[
+            [
+                "indoor_temp",
+                "outdoor_temp",
+                "energy_kwh",
+                "comfort_violation",
+                "temp_deviation",
+            ]
+        ]
+        .describe()
+        .round(3)
+        .to_string()
+    )
     print()
     return df_norm, scaler
 
@@ -266,8 +289,8 @@ def run_pipeline(input_path: str = None, n_rows: int = 2000, seed: int = 42):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HVAC sensor data preprocessing")
     parser.add_argument("--input", default=None, help="Path to an existing raw CSV")
-    parser.add_argument("--rows",  type=int, default=2000, help="Rows to generate")
-    parser.add_argument("--seed",  type=int, default=42)
+    parser.add_argument("--rows", type=int, default=2000, help="Rows to generate")
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     run_pipeline(input_path=args.input, n_rows=args.rows, seed=args.seed)

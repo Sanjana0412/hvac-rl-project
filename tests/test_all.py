@@ -7,12 +7,17 @@ Run:
   pytest tests/ -v
 """
 
-import sys, os, pickle, tempfile
+import os
+import pickle
+import sys
+import tempfile
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 import numpy as np
-from env import HVACEnv, QLearningAgent, SARSAAgent, N_ACTIONS, STATE_SHAPE
+import pytest
+
+from env import N_ACTIONS, STATE_SHAPE, HVACEnv, QLearningAgent, SARSAAgent
 
 
 # ── Environment Tests ────────────────────────────────────────
@@ -62,7 +67,7 @@ class TestEnv:
 class TestQLearning:
     def setup_method(self):
         self.agent = QLearningAgent()
-        self.env   = HVACEnv()
+        self.env = HVACEnv()
 
     def test_q_table_shape(self):
         assert self.agent.q_table.shape == (*STATE_SHAPE, N_ACTIONS)
@@ -109,7 +114,7 @@ class TestQLearning:
 class TestSARSA:
     def setup_method(self):
         self.agent = SARSAAgent()
-        self.env   = HVACEnv()
+        self.env = HVACEnv()
 
     def test_q_table_shape(self):
         assert self.agent.q_table.shape == (*STATE_SHAPE, N_ACTIONS)
@@ -133,20 +138,29 @@ class TestSARSA:
 # ── API Tests ────────────────────────────────────────────────
 try:
     from fastapi.testclient import TestClient
+
     from app import app
+
     API_AVAILABLE = True
 except ImportError:
     API_AVAILABLE = False
+
 
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
         yield c
 
+
 @pytest.mark.skipif(not API_AVAILABLE, reason="fastapi not installed")
 class TestAPI:
-    PAYLOAD = {"indoor_temp": 25.0, "outdoor_temp": 32.0,
-               "occupancy": 1, "hour_of_day": 14.0, "model": "qlearning"}
+    PAYLOAD = {
+        "indoor_temp": 25.0,
+        "outdoor_temp": 32.0,
+        "occupancy": 1,
+        "hour_of_day": 14.0,
+        "model": "qlearning",
+    }
 
     def test_health_200(self, client):
         assert client.get("/health").status_code == 200
