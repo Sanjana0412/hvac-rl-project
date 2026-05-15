@@ -155,80 +155,91 @@ jobs:
   # ─────────────────────────────
   # 5. DOCKER BUILD (FIXED — NO CACHE ERRORS)
   # ─────────────────────────────
-  docker:
-    runs-on: ubuntu-latest
-    needs: [api-test, preprocess]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+docker:
+  name: Docker Build & Push
+  runs-on: ubuntu-latest
+  needs: [api-test, preprocess]
+  if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
-    steps:
-      - uses: actions/checkout@v4
+  steps:
+    - uses: actions/checkout@v4
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
-      - name: Build & Push Docker Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/hvac-rl:latest
-            ghcr.io/${{ github.repository_owner }}/hvac-rl:${{ github.sha }}
-          # ❌ CACHE REMOVED to prevent build failures
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: sanjana0412
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build & Push Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          ghcr.io/sanjana0412/hvac-rl:latest
+          ghcr.io/sanjana0412/hvac-rl:v1.0.${{ github.run_number }}
+          ghcr.io/sanjana0412/hvac-rl:${{ github.sha }}
+
+retrain:
+  name: Retrain RL Agents (MLOps Safe)
+  runs-on: ubuntu-latest
+  needs: preprocess
+
+  if: |
+    github.event_name == 'schedule' ||
+    github.event.inputs.run_training == 'true'
+
+  steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+        cache: pip
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Download dataset
+      uses: actions/download-artifact@v4
+      with:
+        name: clean-data-${{ github.sha }}
+        path: data/
+
+    - name: Train Q-learning
+      run: python train.py --agent qlearning --config configs/config.yaml
+      env:
+        MLFLOW_TRACKING_URI: mlruns
+
+    - name: Train SARSA
+      run: python train.py --agent sarsa --config configs/config.yaml
+      env:
+        MLFLOW_TRACKING_URI: mlruns
+
+    - name: Evaluate models
+      run: python train.py --evaluate
+
+    - name: Validate model artifacts exist
+      run: ls -R models/
+
+    - name: Upload models
+      uses: actions/upload-artifact@v4
+      with:
+        name: models-${{ github.sha }}
+        path: models/
+
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: results-${{ github.sha }}
+        path: |
+          experiments/evaluation.csv
+          plots/
 
 
-  # ─────────────────────────────
-  # 6. RETRAINING
-  # ─────────────────────────────
-  retrain:
-    runs-on: ubuntu-latest
-    needs: preprocess
 
-    if: |
-      github.event_name == 'schedule' ||
-      github.event.inputs.run_training == 'true'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Download dataset
-        uses: actions/download-artifact@v4
-        with:
-          name: clean-data-${{ github.sha }}
-          path: data/
-
-      - name: Train Q-learning
-        run: python train.py --agent qlearning --config configs/config.yaml
-
-      - name: Train SARSA
-        run: python train.py --agent sarsa --config configs/config.yaml
-
-      - name: Evaluate models
-        run: python train.py --evaluate
-
-      - name: Upload models
-        uses: actions/upload-artifact@v4
-        with:
-          name: models-${{ github.sha }}
-          path: models/
-
-      - name: Upload results
-        uses: actions/upload-artifact@v4
-        with:
-          name: results-${{ github.sha }}
-          path: |
-            experiments/evaluation.csv
-            plots/
