@@ -24,3 +24,5 @@ experiments/
 
 # OS
 .DS_Store
+raw_sensor_data.csv
+clean_sensor_data.csv

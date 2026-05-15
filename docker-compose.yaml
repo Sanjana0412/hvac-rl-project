@@ -4,51 +4,87 @@ volumes:
   mlruns_data:
   models_data:
 
-x-env: &env
-  MLFLOW_TRACKING_URI: http://mlflow:5000
-  PYTHONUNBUFFERED: "1"
-
-x-vols: &vols
-  - mlruns_data:/app/mlruns
-  - models_data:/app/models
-  - ./logs:/app/logs
-  - ./plots:/app/plots
-  - ./experiments:/app/experiments
-
 services:
 
   mlflow:
     image: python:3.11-slim
     working_dir: /mlflow
+
     command: >
-      bash -c "pip install mlflow -q &&
-               mlflow server --host 0.0.0.0 --port 5000
-               --backend-store-uri /mlflow/mlruns
-               --default-artifact-root /mlflow/mlruns"
-    ports: ["5000:5000"]
-    volumes: [mlruns_data:/mlflow/mlruns]
+      bash -c "
+      pip install mlflow -q &&
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri /mlflow/mlruns
+      --default-artifact-root /mlflow/mlruns
+      "
+
+    ports:
+      - "5000:5000"
+
+    volumes:
+      - mlruns_data:/mlflow/mlruns
+
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 10s; timeout: 5s; retries: 5
 
   api:
     build: .
+
     depends_on:
-      mlflow: {condition: service_healthy}
-    environment: *env
-    volumes: *vols
-    ports: ["8000:8000"]
+      - mlflow
+
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PYTHONUNBUFFERED: "1"
+
+    volumes:
+      - mlruns_data:/app/mlruns
+      - models_data:/app/models
+      - ./logs:/app/logs
+      - ./plots:/app/plots
+      - ./experiments:/app/experiments
+
+    ports:
+      - "8000:8000"
+
+    command:
+      [
+        "uvicorn",
+        "app:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000"
+      ]
+
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 15s; timeout: 5s; retries: 5
 
   train:
     build: .
+
     depends_on:
-      mlflow: {condition: service_healthy}
-    environment: *env
-    volumes: *vols
-    command: python train.py --agent both --episodes 500
+      - mlflow
+
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PYTHONUNBUFFERED: "1"
+
+    volumes:
+      - mlruns_data:/app/mlruns
+      - models_data:/app/models
+      - ./logs:/app/logs
+      - ./plots:/app/plots
+      - ./experiments:/app/experiments
+
+    command:
+      [
+        "python",
+        "train.py",
+        "--agent",
+        "both",
+        "--episodes",
+        "500"
+      ]
+
     restart: "no"
