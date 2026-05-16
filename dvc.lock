@@ -74,12 +74,12 @@ stages:
     outs:
     - path: configs/best_qlearning_config.yaml
       hash: md5
-      md5: 0d5a7e85c4901c2da061dc28dcdb88c4
-      size: 646
+      md5: e888ea5366f507d4ac15802f724ff6b4
+      size: 645
     - path: configs/best_sarsa_config.yaml
       hash: md5
-      md5: 17fd5e6f0c5d784a90ed347517f99025
-      size: 647
+      md5: 8b3665287722c1213c0b0a95e22a08ec
+      size: 646
   evaluate:
     cmd: python train.py --evaluate
     deps:
